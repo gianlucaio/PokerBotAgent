@@ -1,0 +1,48 @@
+# ============================================================
+# HoldEm Agent — Dipendenze Python (runtime)
+# ============================================================
+# Aggiornato 2026-08-31 — tutte le dipendenze usate dal bot a runtime.
+# Installazione:  python3 -m pip install -r requirements.txt
+#
+# NB: NESSUN modulo di Hermes Agent è richiesto a runtime. Queste
+# dipendenze bastano per eseguire main.py / gui.py da soli.
+# ============================================================
+
+# --- Modulo SEE (cattura schermo + visione) ---
+mss>=9.0.1               # cattura schermo
+opencv-python>=4.8.0     # elaborazione immagini / template matching
+numpy>=1.24.0            # array / calcolo (usato da OpenCV ed equity)
+pillow>=10.0.0           # manipolazione immagini (PIL)
+pytesseract>=0.3.10      # OCR (con Tesseract di sistema)
+
+# --- Modulo EVAL (decisione) ---
+treys>=0.1.6             # calcolo equity / pot-odds poker
+requests>=2.31.0         # chiamate HTTP a LM Studio
+
+# --- Modulo ACT (input mouse) ---
+pyautogui>=0.9.54        # click e input sulla finestra del tavolo
+
+# --- Modulo VOICE (riconoscimento vocale) ---
+vosk>=0.3.45             # STT locale offline (modello in models/vosk/)
+sounddevice>=0.4.6       # acquisizione audio dal microfono (PortAudio)
+
+# --- Modulo GUI (pannello di controllo) ---
+# tkinter: incluso nella libreria standard di Python (nessun pip necessario).
+# Su Debian/Ubuntu:  sudo apt install python3-tk
+
+# ============================================================
+# Dipendenze di SISTEMA (non pip, da installare via package manager)
+# ============================================================
+# - Tesseract OCR:           apt install tesseract-ocr
+# - PortAudio (sounddevice): apt install libportaudio2
+# - wmctrl (cattura finestra): apt install wmctrl
+# - xwininfo (cattura finestra): apt install x11-utils
+#
+# Modelli locali LM Studio (non pip):
+# - Modello poker:  texasholdem-llama-3.2-1b-instruct
+# - Modello vision: qwen3-vl-8b-instruct
+#
+# Modello Vosk italiano (non pip, da scaricare):
+#   https://alphacephei.com/vosk/models/vosk-model-small-it-0.4.zip
+#   → estrarre in models/vosk/vosk-model-small-it-0.4/
+# ============================================================
