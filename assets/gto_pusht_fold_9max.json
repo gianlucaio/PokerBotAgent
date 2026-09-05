@@ -1,0 +1,38 @@
+{
+  "description": "GTO Push/Fold Preflop Tables for 9-max MTT",
+  "format": "9max",
+  "blind_levels": "bb",
+  "notes": "Stack effettivo in big blind. Posizioni: UTG, UTG+1, MP, LJ, HJ, CO, BTN, SB. Azioni: push, fold.",
+  "tables": {
+    "10bb": {
+      "UTG": {"push": ["AA", "KK", "QQ", "JJ", "TT", "AKs", "AKo", "AQs", "AQo", "AJs", "KQs"], "fold": "all_other"},
+      "UTG+1": {"push": ["AA", "KK", "QQ", "JJ", "TT", "99", "AKs", "AKo", "AQs", "AQo", "AJs", "KQs", "ATs"], "fold": "all_other"},
+      "MP": {"push": ["AA", "KK", "QQ", "JJ", "TT", "99", "88", "AKs", "AKo", "AQs", "AQo", "AJs", "AJo", "KQs", "ATs"], "fold": "all_other"},
+      "LJ": {"push": ["AA", "KK", "QQ", "JJ", "TT", "99", "88", "77", "AKs", "AKo", "AQs", "AQo", "AJs", "AJo", "ATs", "A9s", "KQs", "KJs"], "fold": "all_other"},
+      "HJ": {"push": ["AA", "KK", "QQ", "JJ", "TT", "99", "88", "77", "66", "AKs", "AKo", "AQs", "AQo", "AJs", "AJo", "ATs", "A9s", "A8s", "KQs", "KJs", "QJs"], "fold": "all_other"},
+      "CO": {"push": ["AA", "KK", "QQ", "JJ", "TT", "99", "88", "77", "66", "55", "AKs", "AKo", "AQs", "AQo", "AJs", "AJo", "ATs", "A9s", "A8s", "A7s", "KQs", "KJs", "KTs", "QJs", "JTs"], "fold": "all_other"},
+      "BTN": {"push": ["AA", "KK", "QQ", "JJ", "TT", "99", "88", "77", "66", "55", "44", "33", "22", "AKs", "AKo", "AQs", "AQo", "AJs", "AJo", "ATs", "A9s", "A8s", "A7s", "A6s", "A5s", "A4s", "A3s", "A2s", "KQs", "KJs", "KTs", "K9s", "QJs", "QTs", "JTs", "T9s"], "fold": "all_other"},
+      "SB": {"push": ["AA", "KK", "QQ", "JJ", "TT", "99", "88", "77", "66", "55", "44", "33", "22", "AKs", "AKo", "AQs", "AQo", "AJs", "AJo", "ATs", "A9s", "A8s", "A7s", "A6s", "A5s", "A4s", "A3s", "A2s", "KQs", "KJs", "KTs", "K9s", "K8s", "QJs", "QTs", "Q9s", "JTs", "J9s", "T9s", "98s"], "fold": "all_other"}
+    },
+    "15bb": {
+      "UTG": {"push": ["AA", "KK", "QQ", "JJ", "TT", "AKs", "AKo"], "fold": "all_other"},
+      "UTG+1": {"push": ["AA", "KK", "QQ", "JJ", "TT", "99", "AKs", "AKo", "AQs"], "fold": "all_other"},
+      "MP": {"push": ["AA", "KK", "QQ", "JJ", "TT", "99", "88", "AKs", "AKo", "AQs", "AQo"], "fold": "all_other"},
+      "LJ": {"push": ["AA", "KK", "QQ", "JJ", "TT", "99", "88", "77", "AKs", "AKo", "AQs", "AQo", "AJs", "KQs"], "fold": "all_other"},
+      "HJ": {"push": ["AA", "KK", "QQ", "JJ", "TT", "99", "88", "77", "66", "AKs", "AKo", "AQs", "AQo", "AJs", "AJo", "ATs", "KQs", "KJs"], "fold": "all_other"},
+      "CO": {"push": ["AA", "KK", "QQ", "JJ", "TT", "99", "88", "77", "66", "55", "AKs", "AKo", "AQs", "AQo", "AJs", "AJo", "ATs", "A9s", "KQs", "KJs", "QJs", "JTs"], "fold": "all_other"},
+      "BTN": {"push": ["AA", "KK", "QQ", "JJ", "TT", "99", "88", "77", "66", "55", "44", "33", "AKs", "AKo", "AQs", "AQo", "AJs", "AJo", "ATs", "A9s", "A8s", "A7s", "A6s", "A5s", "KQs", "KJs", "KTs", "QJs", "JTs", "T9s"], "fold": "all_other"},
+      "SB": {"push": ["AA", "KK", "QQ", "JJ", "TT", "99", "88", "77", "66", "55", "44", "33", "22", "AKs", "AKo", "AQs", "AQo", "AJs", "AJo", "ATs", "A9s", "A8s", "A7s", "A6s", "A5s", "A4s", "KQs", "KJs", "KTs", "QJs", "QTs", "JTs", "T9s", "98s"], "fold": "all_other"}
+    },
+    "20bb": {
+      "UTG": {"push": ["AA", "KK", "QQ", "AKs"], "fold": "all_other"},
+      "UTG+1": {"push": ["AA", "KK", "QQ", "JJ", "AKs", "AKo"], "fold": "all_other"},
+      "MP": {"push": ["AA", "KK", "QQ", "JJ", "TT", "AKs", "AKo", "AQs"], "fold": "all_other"},
+      "LJ": {"push": ["AA", "KK", "QQ", "JJ", "TT", "99", "AKs", "AKo", "AQs", "AQo", "AJs"], "fold": "all_other"},
+      "HJ": {"push": ["AA", "KK", "QQ", "JJ", "TT", "99", "88", "AKs", "AKo", "AQs", "AQo", "AJs", "KQs"], "fold": "all_other"},
+      "CO": {"push": ["AA", "KK", "QQ", "JJ", "TT", "99", "88", "77", "AKs", "AKo", "AQs", "AQo", "AJs", "AJo", "ATs", "KQs", "KJs"], "fold": "all_other"},
+      "BTN": {"push": ["AA", "KK", "QQ", "JJ", "TT", "99", "88", "77", "66", "55", "AKs", "AKo", "AQs", "AQo", "AJs", "AJo", "ATs", "A9s", "A8s", "KQs", "KJs", "KTs", "QJs", "JTs"], "fold": "all_other"},
+      "SB": {"push": ["AA", "KK", "QQ", "JJ", "TT", "99", "88", "77", "66", "55", "44", "AKs", "AKo", "AQs", "AQo", "AJs", "AJo", "ATs", "A9s", "A8s", "KQs", "KJs", "KTs", "QJs", "QTs", "JTs", "T9s"], "fold": "all_other"}
+    }
+  }
+}
