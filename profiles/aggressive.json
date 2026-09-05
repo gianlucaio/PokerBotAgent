@@ -1,0 +1,12 @@
+{
+  "name": "aggressive",
+  "description": "Profilo aggressivo - gioca molte mani, pressione costante",
+  "equity_threshold": {
+    "min_call": 0.25,
+    "min_raise": 0.35,
+    "min_fold": 0.20
+  },
+  "aggression_factor": 1.5,
+  "vpip_range": {"min": 0.25, "max": 0.40},
+  "pfr_range": {"min": 0.18, "max": 0.30}
+}
