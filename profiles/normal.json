@@ -1,0 +1,12 @@
+{
+  "name": "normal",
+  "description": "Profilo bilanciato",
+  "equity_threshold": {
+    "min_call": 0.30,
+    "min_raise": 0.40,
+    "min_fold": 0.15
+  },
+  "aggression_factor": 1.0,
+  "vpip_range": {"min": 0.15, "max": 0.25},
+  "pfr_range": {"min": 0.10, "max": 0.20}
+}
