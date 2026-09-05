@@ -7,11 +7,12 @@ Agente autonomo per Texas Hold'em (MTT e Sit'n go) su una piattaforma privata a 
 - [Architettura](#architettura)
 - [Requisiti](#requisiti)
 - [Installazione da zero](#installazione-da-zero)
-- [Avvio e arresto](#avvio-e-arresto)
+- [Avvio e arresto](#avvio-e-avvio)
 - [Avvio tramite GUI](#avvio-tramite-gui-pannello-di-controllo)
 - [Test & Verifica (dalla GUI)](#test--verifica-dalla-gui)
 - [Modelli consigliati (LM Studio)](#modelli-consigliati-lm-studio)
 - [Informazioni torneo](#informazioni-torneo-lettura-automatica-via-vision)
+- [Poker Utils](#poker-utils-moduli-di-calcolo)
 - [Struttura del progetto](#struttura-del-progetto)
 - [⚠️ Client e calibrazione](#-client-e-calibrazione)
 - [Stato del progetto](#stato-del-progetto)
@@ -102,13 +103,59 @@ pip install -r requirements.txt
 DISPLAY=:0 python3 -u main.py
 ```
 
-### 6. Posizionare il client
+## 6. Posizionare il client
 
 1. Apri il client (app o sito web) nella sua **dimensione di default** (non a schermo intero).
 2. Posiziona la finestra nell’angolo in alto a sinistra dello schermo (coordinate 0,0).
 3. **Non ingrandire** la finestra.
 
-> **Nota:** ogni utente deve **ricalibrare** le coordinate dei pulsanti e dei seat per il proprio client. Le dimensioni 899×742 si riferiscono al client di sviluppo e non sono valide per altri client.
+> **Nota:** ogni utente deve **ricalibrare** le coordinate dei pulsanti e dei seat per il proprio client con **PokerTableScope** — le dimensioni della finestra e le coordinate dei pulsanti variano da client a client e non sono universali.
+
+—-
+
+## Ecosistema di strumenti
+
+Questo progetto **non funziona da solo**: fa parte di una famiglia di 5 strumenti progettati per lavorare insieme. Ognuno ha un ruolo preciso e specifico:
+
+| Strumento | Ruolo |
+|---|---|
+| **PokerBotNexus-Suite** | Web app unificata che orchestra tutti i 5 tool. Dashboard, launch/stop, log live, config centralizzata. Avvio con `./avvio.sh` → `http://localhost:PORT` |
+| **PokerTableScope** | Calibratore universale dei tavoli. Dallo screenshot produce layout JSON con coordinate di seat, pulsanti, ROI e dimensioni — **indispensabile** perché il bot sappia dove cliccare |
+| **PokerProfileCreator** | Creatore visuale di profili di gioco (tight/normal/aggressivo) con GUI a 4 temi. Esporta profili JSON compatibili con questo bot |
+| **PokerBotStealther** | Libreria anti-ban per mouse e tastiera. Curva Bezier, easing, click gaussiano, drift fuori finestra, budget system, traiettorie umane. Interviene **prima** che il bot agisca, rendendo i movimenti indistinguibili da quelli umani. **Indispensabile** per l'anti-rilevamento |
+| **PokerMttVirtual** | Simulatore di tavolo virtuale (1280×820) con carte reali, barra azioni e bridge verso questo bot. Permette di **testare la pipeline completa senza rischiare fiches reali** |
+| **PokerBotAgent** (questo) | Il bot vero e proprio: vede, decide e agisce sul tavolo reale |
+
+**Flusso completo:**
+
+```
+0. PokerBotNexus-Suite → avvia tutti i tool da web (opzionale)
+1. PokerMttVirtual o client reale → screenshot del tavolo
+2. PokerTableScope → calibra seat/pulsanti/ROI → esporta layout JSON
+3. PokerProfileCreator → crea/importa profili di gioco
+4. PokerBotAgent → carica layout + profili → gioca (See → Eval → Act)
+5. PokerBotStealther → interviene prima di ogni azione (movimento/click/tastiera)
+```
+
+### Esempi di tavoli calibrati
+
+Il bot funziona su diversi formati di tavolo. Ecco alcuni esempi di client testati (informazioni identificative offuscate per privacy):
+
+**Client Web — Tavolo 6-max:**
+
+![Tavolo 6-max Web](docs/screenshots/web-6max1_a52210.png)
+
+![Tavolo 6-max Web (vista 2)](docs/screenshots/web-6max2_7a0dbd.png)
+
+**Client Web — Tavolo 9-max:**
+
+![Tavolo 9-max Web](docs/screenshots/web-9max2_a27470.png)
+
+**Client Nativo (app) — Tavolo 9-max:**
+
+![Tavolo 9-max Client](docs/screenshots/client-9max1_58f04e.png)
+
+> **Nota:** le informazioni identificative (nomi utente, nomi delle room, avatar) sono state intenzionalmente offuscate. Ogni utente deve calibrare i propri tavoli con PokerTableScope — le coordinate non valgono da un client all'altro.
 
 ---
 
@@ -229,6 +276,55 @@ I dati inseriti manualmente nella GUI (configurazione torneo) restano disponibil
 
 ---
 
+## Poker Utils — Moduli di calcolo (da DeepMind Poker)
+
+La cartella `poker_utils/` contiene moduli di calcolo **estratti da DeepMind Poker** (un progetto di ricerca open source sull'apprendimento del poker) e adattati per PokerBotAgent. Usano **Treys** come evaluator e la mappatura formati in `card_map.py`.
+
+Il sistema di calcolo appreso da DeepMind Poker comprende:
+
+| Modulo | Funzione | Dipendenze |
+|---|---|---|
+| `card_map.py` | Mappatura bidirezionale formati (Treys ↔ DeepMind ↔ Vision) | treys |
+| `preflop.py` | Lookup equity preflop (169 combinazioni) | card_map |
+| `straight_draw.py` | Rilevamento straight draw + outs | nessuna |
+| `outs.py` | Calcolo outs per decisioni post-flop | treys, card_map |
+| `implied_odds.py` | Pot odds + hitting odds + EV difference | nessuna |
+| `montecarlo.py` | Monte Carlo simulation per equity | treys, card_map |
+| `sizing.py` | Sizing bet in base all'equity (curva potenza) | numpy |
+
+Questi moduli danno al bot una base matematica solida per il processo decisionale: **equity preflop, outs post-flop, pot odds/implied odds, simulazione Monte Carlo e bet sizing** — il tutto calcolato localmente, senza dipendere dal modello LLM.
+
+### Uso rapido
+
+```python
+from poker_utils.preflop import quick_equity
+equity = quick_equity("As", "Kd")  # 0.6592
+
+from poker_utils.montecarlo import monte_carlo
+result = monte_carlo(["As", "Kd"], ["Th", "9c", "2d"], num_players=2)
+print(result["equity"])  # 0.45
+
+from poker_utils.outs import calculate_outs
+outs = calculate_outs(["As", "Ks"], ["Qs", "Jd", "9c"])
+print(outs["outs"])  # 4 (gutshot)
+
+from poker_utils.implied_odds import calculate_implied_odds
+odds = calculate_implied_odds(outs=9, call_value=50, pot_value=200)
+print(odds["is_profitable"])  # False
+```
+
+### Test内置
+
+Ogni modulo ha test内置 nel blocco `__main__`. Esegui con:
+```bash
+cd PokerBotAgent
+.venv/bin/python3 -m poker_utils.card_map
+.venv/bin/python3 -m poker_utils.preflop
+.venv/bin/python3 -m poker_utils.montecarlo
+```
+
+---
+
 ## Struttura del progetto
 
 ```
@@ -239,11 +335,23 @@ PokerBotAgent v 0.3.0/
 ├── config.py            # Ambiente/Modalità attivi, soglie, profili tattici, toggle preflop
 ├── see.py               # Cattura mss + OpenCV + Vision + OCR fallback; carica layout da PokerTableScope
 ├── eval_engine.py       # Treys + tabelle GTO opzionali + connessione LM Studio + fallback + profilo avversari
-├── act.py               # PyAutoGUI + coordinate pulsanti dal layout (PokerTableScope) + validazione + retry click + Sit-Out
+├── act.py               # PyAutoGUI + coordinate pulsanti dal layout (PokerTableScope) + PokerBotStealther (anti-ban) + validazione + retry click + Sit-Out
 ├── voice.py             # STT locale Vosk + sotto-flussi comando/spiegazione/correzione
 ├── db.py                # SQLite: opponent_stats, voice_corrections, tournament_config, perception_corrections
 ├── tracker.py           # Profilazione avversari (VPIP/PFR/AF ad ogni mano)
 ├── mem_gc.py            # Garbage Collection: pulizia TTL memoria per sessioni lunghe
+├── poker_utils/         # ★ Moduli di calcolo (estratti da deepmind-pokerbot, adattati per Treys)
+│   ├── __init__.py
+│   ├── card_map.py      #   Mappatura formati carta (Treys ↔ Deepmind ↔ Vision)
+│   ├── preflop.py       #   Lookup equity preflop (169 combinazioni)
+│   ├── preflop_equity.json     # Tabella equity full range
+│   ├── preflop_equity-50.json  # Tabella equity top 50%
+│   ├── straight_draw.py #   Rilevamento straight draw
+│   ├── outs.py          #   Calcolo outs post-flop
+│   ├── implied_odds.py  #   Pot odds + EV difference
+│   ├── montecarlo.py    #   Monte Carlo equity simulation
+│   └── sizing.py        #   Bet sizing in base all'equity
+├── docs/screenshots/    # Screenshot dei tavoli calibrati (info offuscate)
 ├── requirements.txt     # Dipendenze Python (installate automaticamente da avvio.sh)
 ├── .gitignore           # Esclusioni per distribuzione (venv, cache, screenshot)
 ├── README.md            # Documentazione completa del progetto
@@ -326,7 +434,8 @@ Il modello viene caricato automaticamente all'avvio del modulo Voice. Se manca, 
 - **Garbage Collection (Step 13):** pulizia automatica della memoria (TTL 600s, limite 200MB) e debug mode scrivono screenshot/log in `/tmp/holdem_debug/` per sessioni lunghe stabili.
 - **Info torneo via Vision:** lettura automatica di blind/ante/giocatori/paganti dalla barra in alto a ogni ciclo Vision, iniettati nel prompt decisionale.
 - **Distribuzione pronta:** `avvio.sh` con venv automatico (e ripristino dipendenze mancanti), nessun dato personale nel codice, `.gitignore` per esclusioni.
-- **Anti-ban offset casuale:** il bot userà le dimensioni (w,h) dei pulsanti dal layout per generare click casuali dentro l'area (in fase di implementazione in `act.py`).
+- **Poker Utils integrati:** 7 moduli di calcolo estratti da deepmind-pokerbot e adattati per Treys — mappatura formati, equity preflop (lookup 169 combinazioni), outs calculator, implied odds, Monte Carlo simulation, bet sizing. Package `poker_utils/` con test内置 e documentazione completa.
+- **PokerBotStealther integrato (v0.4.0):** ogni click passa per il middleware anti-ban — riflessione pre-azione, movimento Bezier, click gaussiano, post-delay, drift fuori finestra. Bet sizing via tastiera con ritmo variabile. Fallback automatico a pyautogui se la libreria non è presente. Profilo comportamentale casuale per sessione.
 - **Non ancora integrato:** supporto multi-tavolo.
 
 ---
