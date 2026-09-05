@@ -14,6 +14,9 @@ import numpy as np
 import json
 import os
 import time
+import logging
+
+log = logging.getLogger("see")
 
 # Tesseract è importato solo dentro i metodi fallback (lazy), così se
 # non è installato il modulo principale funziona comunque.
@@ -25,6 +28,9 @@ from config import (
 
 class SeeModule:
     """Gestisce cattura schermo, riconoscimento (Vision + fallback OCR)."""
+
+    # Costante: titolo della finestra del tavolo da cercare (cross-platform)
+    TABLE_WINDOW_TITLE = "no limit hold'em"
 
     # Mappa conversione formato esteso → Treys compatto
     RANK_MAP = {
@@ -88,16 +94,26 @@ class SeeModule:
     # ------------------------------------------------------------------
     def _get_table_window_origin(self):
         """Trova la posizione (left, top) della finestra del tavolo reale.
+        Cross-platform: wmctrl+xwininfo su Linux, ctypes su Windows.
         Fallback su (0,0) se non trova la finestra."""
+        if os.name == "nt":
+            return self._get_table_window_origin_windows()
+        else:
+            return self._get_table_window_origin_linux()
+
+    def _get_table_window_origin_linux(self):
+        """Linux: wmctrl + xwininfo per trovare la finestra del tavolo."""
         import subprocess
+        title = self.TABLE_WINDOW_TITLE
         try:
             out = subprocess.run(["wmctrl", "-l"], capture_output=True, text=True, timeout=5).stdout
             wid = None
             for line in out.splitlines():
-                if "no limit hold'em" in line.lower():
+                if title in line.lower():
                     wid = line.split()[0]
                     break
             if not wid:
+                log.warning("Finestra tavolo non trovata (wmctrl): '%s' assente", title)
                 return 0, 0
             geo = subprocess.run(["xwininfo", "-id", wid], capture_output=True, text=True, timeout=5).stdout
             def _get(key):
@@ -111,10 +127,47 @@ class SeeModule:
             left = _get("Absolute upper-left X")
             top = _get("Absolute upper-left Y")
             if left is None or top is None:
+                log.warning("Geometria finestra non trovata (xwininfo)")
                 return 0, 0
             return left, top
-        except Exception:
+        except Exception as e:
+            log.warning("Fallback finestra tavolo Linux: %s", e)
             return 0, 0
+
+    def _get_table_window_origin_windows(self):
+        """Windows: ctypes + EnumWindows per trovare la finestra del tavolo.
+        Zero dipendenze extra — usa solo stdlib."""
+        import ctypes
+        import ctypes.wintypes as wt
+
+        result = [0, 0]
+        title_needle = self.TABLE_WINDOW_TITLE
+
+        @ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+        def _enum_cb(hwnd, _lparam):
+            if not ctypes.windll.user32.IsWindowVisible(hwnd):
+                return True
+            length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+            if length == 0:
+                return True
+            buf = ctypes.create_unicode_buffer(length + 1)
+            ctypes.windll.user32.GetWindowTextW(hwnd, buf, length + 1)
+            title = buf.value.lower()
+            if title_needle in title:
+                rc = wt.RECT()
+                ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rc))
+                result[0] = rc.left
+                result[1] = rc.top
+                return False  # found — stop enumeration
+            return True
+
+        try:
+            ctypes.windll.user32.EnumWindows(_enum_cb, 0)
+        except Exception as e:
+            log.warning("Fallback finestra tavolo Windows: %s", e)
+        if result == [0, 0]:
+            log.warning("Finestra tavolo non trovata (Windows): '%s' assente", title_needle)
+        return tuple(result)
 
     def _load_test_screenshot(self, path=None):
         """Carica uno screenshot da file per test (opzionale)."""
