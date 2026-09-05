@@ -1,0 +1,27 @@
+{
+  "name": "auto_adaptive",
+  "description": "Profilo adattivo - si adatta automaticamente in base a equity/pot-odds e fase",
+  "equity_threshold": {
+    "min_call": 0.30,
+    "min_raise": 0.40,
+    "min_fold": 0.15
+  },
+  "aggression_factor": 1.0,
+  "vpip_range": {"min": 0.15, "max": 0.35},
+  "pfr_range": {"min": 0.10, "max": 0.25},
+  "adaptive_rules": {
+    "preflop": {
+      "tight_when_early": true,
+      "aggressive_when_late": true
+    },
+    "postflop": {
+      "draw_aggression": 1.2,
+      "made_hand_protection": 1.1,
+      "bluff_frequency": 0.15
+    },
+    "stack_adjustment": {
+      "short_stack_aggression": 1.3,
+      "deep_stack_caution": 0.9
+    }
+  }
+}
