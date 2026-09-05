@@ -1,0 +1,394 @@
+{
+  "analisi_moduli_deepmind_pokerbot": {
+    "data_analisi": "2026-09-04",
+    "progetto_origine": "deepmind-pokerbot",
+    "progetto_destinazione": "PokerBotAgent (Python + Treys + LM Studio + OpenCV/mss + PyAutoGUI)",
+
+    "moduli": {
+      "montecarlo_python.py": {
+        "percorso": "poker/decisionmaker/montecarlo_python.py",
+        "riassunto": "Implementa una simulazione Monte Carlo per calcolare l'equity di una mano di poker. Contiene la classe MonteCarlo con: creazione deck, distribuzione casuale carte ai giocatori avversari (rispettando range preflop), distribuzione carte al tavolo, valutazione della mejor mano tra tutti i giocatori. La valutazione mani è fatta con un sistema custom di score basato su rank counters (non usa Treys). Il wrapper run_montecarlo_wrapper gestisce il flusso completo: legge la strategia, imposta number of players, gestisce collusion, calcola equity assoluta e relativa. Supporta timeout e range of range.",
+        "dipendenze_esterne": ["numpy", "poker.tools.helper.get_dir"],
+        "dipendenze_interne": ["helper.get_dir"],
+        "input": "mazzo, carte giocatore (lista di liste o set di range), carte tavolo, numero giocatori, max_runs, timeout, ghost_cards, opponent_range",
+        "output": "equity (float 0-1), winnerCardTypeList (Counter delle mani vincenti)",
+        "valutazione": "USABILE",
+        "motivazione": "Core functionality parfaitement isolable. Il sistema di valutazione mani è duplicato con Treys (podrebbe essere sostituito). Il wrapper run_montecarlo_wrapper usa parametri specifici del progetto originale (t, p, h, L objects) ma il 90% della logica MC è indipendente e riutilizzabile. Il sistema di range basato su preflop_equity.json è un plus significativo. Valutazione mani custom può essere sostituita con Treys.Evaluator() per performance migliori.",
+        "integrabilita": "ALTA - Solo da rimpiazzare calc_score() con Treys, il resto è autonomo"
+      },
+
+      "montecarlo_numpy.py": {
+        "percorso": "poker/decisionmaker/montecarlo_numpy.py",
+        "riassunto": "Versione sperimentale della simulazione Monte Carlo basata interamente su operazioni vettoriali NumPy. La classe Evaluation distribuisce mazzi multipli simultaneamente usando stride tricks di NumPy, calcola counts, kickers, multiple cards, full house, straight (con as_strided per sliding window), flush, straight flush e high card - tutto in forma vettoriale per N iterazioni parallele. Usa un sistema di moltiplicatori per assegnare punteggi. È un WIP (work in progress), incomplete su alcuni aspetti.",
+        "dipendenze_esterne": ["numpy (con np.lib.stride_tricks)"],
+        "dipendenze_interne": [],
+        "input": "card1, card2 (indici numerici 0-47), tablecards (lista indici), iterations, player_amount",
+        "output": "winPercent (float, percentuale vittorie)",
+        "valutazione": "PARZIALMENTE",
+        "motivazione": "Il concetto è eccellente (vettorializzazione della MC) ma è WIP incompleto: sistema di indici diverso dal resto del progetto, mancano le funzioni di valutazione pareggio (tie-breaking), il sistema di punteggio non è allineato con montecarlo_python. Utile come riferimento architetturale per creare una versione NumPy della MC, ma non direttamente riutilizzabile senza riscrittura significativa.",
+        "integrabilita": "BASSA - WIP, sistema indici incompatibile, manca tie-breaking"
+      },
+
+      "montecarlo_numpy2.py": {
+        "percorso": "poker/decisionmaker/montecarlo_numpy2.py",
+        "riassunto": "Seconda versione della MC vettoriale NumPy. Stessa architettura di montecarlo_numpy.py ma con sistema di punteggi diverso (moltiplicatori a potenze di 10 normalizzati), gestione mani multi-giocatore più completa, e sistema di valutazione più maturo. Implementa get_straightflush, get_four_of_a_kind, get_fullhouse, get_flush, get_straight, get_three_of_a_kind, get_two_pair_score, get_pair_score, get_highcard come metodi separati. Il calc_score finale confronta le mani di tutti i giocatori usando moltiplicatori * valori rilevati.",
+        "dipendenze_esterne": ["numpy (con np.lib.stride_tricks)"],
+        "dipendenze_interne": [],
+        "input": "card1/card2 come [valore, seme] (es [2,0]), tablecards come lista di [valore, seme], iterations, player_amount",
+        "output": "winPercent (float 0-1), elenco vittorie MyWins/iterations",
+        "valutazione": "PARZIALMENTE",
+        "motivazione": "Più maturo di montecarlo_numpy.py con sistema di indici più chiaro e tie-breaking implementato. Performance potenzialmente eccellenti grazie alla vettorializzazione. Problemi: formato input diverso dal resto del progetto (usa array numerici invece di stringhe 'KS'), non è integrato nel flusso decisionale, è un modulo standalone. Il calcolo è corretto ma serve adattamento per il formato carte di Treys.",
+        "integrabilita": "MEDIA - Potenziale alto come acceleratore MC ma serve conversione formato carte"
+      },
+
+      "outs_calculator.py": {
+        "percorso": "poker/decisionmaker/outs_calculator.py",
+        "riassunto": "Calcola il numero di outs (carte che migliorano la mano) dal Flop o Turn. Gestisce: gut shot straight draw (4 outs), open-ended straight draw (8 outs), flush draw (9 outs), gut shot + flush (12 outs), open + flush (15 outs). Usa itertools.combinations per generare tutte le combinazioni di 4 carte da mano+board, poi testa ogni ghost card per verificare se completa un straight. Include una calc_score() duplicata da montecarlo_python.py per valutare la mano.",
+        "dipendenze_esterne": ["itertools"],
+        "dipendenze_interne": [],
+        "input": "pocket (2 carte), board (3-4 carte)",
+        "output": "numero di outs (int: 0, 4, 8, 9, 12 o 15)",
+        "valutazione": "USABILE",
+        "motivazione": "Modulo self-contained e piccolo. Logica degli outs pura e corretta. La calc_score() duplicata può essere rimossa e sostituita con Treys se necessario. L'output (numero di outs) è direttamente utilizzabile nel decision pipeline per aggiustare le equity thresholds. Necessita di reformattazione carte se Treys usa un formato diverso.",
+        "integrabilita": "ALTA - Modulo piccolo, self-contained, output chiaro e utile"
+      },
+
+      "decisionmaker.py": {
+        "percorso": "poker/decisionmaker/decisionmaker.py",
+        "riassunto": "Cuore del sistema decisionale. La classe Decision eredita da DecisionBase e implementa: calcolo delle equity thresholds per ogni stage (PreFlop/Flop/Turn/River), gestione delle pot multiples, calcolo EV call limit, curve fitting per dimensionare le scommesse, outs adjustment, preflop table analysis (usa fogli Excel), calling logic, betting logic (bet1-bet4), bluff logic, check deception, call deception, bully mode, e administrative rules. Il metodo make_decision() orchestra tutto il flusso decisionale. Usa Curvefitting per mappare equity → dimensione scommessa.",
+        "dipendenze_esterne": ["numpy", "logging", "random", "enum"],
+        "dipendenze_interne": ["base.DecisionBase", "curvefitting.*", "montecarlo_python.*", "outs_calculator.Outs_Calculator"],
+        "input": "t (table state), h (history), p (strategy params), l (logger/game_logger)",
+        "output": "self.decision (DecisionTypes enum: Fold/Check/Call/Bet/BetPlus/etc), self.finalCallLimit, self.finalBetLimit",
+        "valutazione": "PARZIALMENTE",
+        "motivazione": "Contiene la logica decisionale più completa. Tuttavia è strettamente accoppiata all'architettura originale: dipende da oggetti t/h/p/l con decine di attributi specifici, usa strategia da database remoto via requests, legge fogli Excel per preflop. La logica EV/curve-fitting è estraibile, ma l'orchestrazione richiederebbe riscrittura per funzionare con Treys + LM Studio. Utile come REFERENCE per struttura decisionale, non come codice da copiare.",
+        "integrabilita": "BASSA - Troppo accoppiato all'architettura originale, ma logica come reference"
+      },
+
+      "curvefitting.py": {
+        "percorso": "poker/decisionmaker/curvefitting.py",
+        "riassunto": "Fitting di curve per mappare equity → dimensione della scommessa. Contiene due implementazioni: Curvefitting_scipy (usa scipy.optimize.curve_fit) e Curvefitting (usa lmfit con least squares). In entrambi i casi: dati due punti (minEquity→bigBlind, 1→maxValue) e un esponente di curvatura (pw), fitta una curva potenza y = adj1 * (x + adj2)^pw. Usato per calcolare quanto puntare in base all'equity: alta equity → scommessa alta, bassa equity → fold/small bet.",
+        "dipendenze_esterne": ["numpy", "scipy.optimize.curve_fit", "lmfit (minimize, Parameters)", "matplotlib.pyplot (opzionale, per plot)"],
+        "dipendenze_interne": [],
+        "input": "equity (float 0-1), smallBlind, bigBlind, maxValue, minEquity, maxEquity, max_X, pw (esponente)",
+        "output": "y (array valori puntata corrispondenti all'equity)",
+        "valutazione": "USABILE",
+        "motivazione": "Modulo puramente matematico, zero accoppiamenti con il resto del sistema. La versione Curvefitting_scipy usa solo scipy (già comune). La versione lmfit richiede un extra package. Concetto semplice e geniale: mappa equity→bet sizing con curva potenza. Direttamente riutilizzabile: basta passare i parametri giusti. Punto chiave per il sizing delle scommesse.",
+        "integrabilita": "ALTA - Modulo matematico puro, nessuna dipendenza dal progetto"
+      },
+
+      "implied_odds.py": {
+        "percorso": "poker/decisionmaker/implied_odds.py",
+        "riassunto": "Calcola le implied odds: il rapporto tra il payoff potenziale e il costo attuale di una call, considerando le outs. Usa Outs_Calculator per ottenere le outs, poi calcola pot_odds, hitting_odds (cardi rimaste / outs), la differenza, l'EV difference e il remaining stack. Formula base: pot_odds = (pot + call) / call; hitting_odds = (1 / (outs/cardi_rimaste)) - 1.",
+        "dipendenze_esterne": [],
+        "dipendenze_interne": ["outs_calculator.Outs_Calculator"],
+        "input": "least_fund (stack effettivo), call_value, pot_value, table state",
+        "output": "ev_difference, remaining_stack, pot_on_next_street",
+        "valutazione": "PARZIALMENTE",
+        "motivazione": "La logica matematica è corretta e utile. Tuttavia ha un bug evidente: passa 'self' come primo argomento a evaluate_hands() quando dovrebbe passare t.myCards. Il modulo è molto piccolo (33 righe) e la formula è semplice da reimplementare correttamente. L'idea è buona ma l'implementazione è incompleta/buggata.",
+        "integrabilita": "MEDIA - Buon concetto, ma serve fix del bug e riscrittura"
+      },
+
+      "straight_draw.py": {
+        "percorso": "poker/decisionmaker/short_draw.py",
+        "riassunto": "Funzione standalone che verifica se una mano ha un straight draw. Prende una lista di valori carta (es '23457'), estrae gli indici, calcola le differenze tra valori sortati, e verifica se 4 carte consecutive sono presenti (differenze sommate = 4). Restituisce un booleano.",
+        "dipendenze_esterne": ["numpy"],
+        "dipendenze_interne": [],
+        "input": "cards (lista con almeno un elemento contenente stringa di valori, es ['23457'])",
+        "output": "is_straight_draw (bool)",
+        "valutazione": "USABILE",
+        "motivazione": "Funzione piccola, pura, self-contained. Solo un paio di righe. Concetto semplice: verifica 4 carte consecutive. L'input è un po' anomalo (lista di liste con stringhe) ma la logica è chiara. Direttamente riutilizzabile con piccole modifiche al formato input.",
+        "integrabilita": "ALTA - Funzione pura, 12 righe, zero dipendenze progetto"
+      },
+
+      "create_preflop_equity_ranking.py": {
+        "percorso": "poker/decisionmaker/create_preflop_equity_ranking.py",
+        "riassunto": "Script che genera il file preflop_equity-50.json. Itera su tutte le combinazioni possibili di mani preflop (169 combinazioni: suited, offsuit, pairs), esegue 15000 simulazioni Monte Carlo per ciascuna, e salva il risultato ordinato per equity. Supporta 2 only su 2 (heads-up) con opponent_range=0.5 (top 50% range).",
+        "dipendenze_esterne": ["time", "json", "collections.OrderedDict"],
+        "dipendenze_interne": ["poker.decisionmaker.montecarlo_python.MonteCarlo"],
+        "input": "Nessuno (script standalone)",
+        "output": "File preflop_equity-50.json con 169 chiavi (es 'AKS', '23O') e valori equity float",
+        "valutazione": "USABILE",
+        "motivazione": "Script utilissimo per rigenerare le tabelle equity preflop. Funziona autonomamente e il JSON generato è prezioso per il lookup rapido di equity preflop senza run MC. Utile per calibrare range against Treys.",
+        "integrabilita": "ALTA - Script indipendente, output JSON direttamente usabile"
+      },
+
+      "preflop_equity.json": {
+        "percorso": "poker/decisionmaker/preflop_equity.json",
+        "riassunto": "Lookup table JSON con 169 entry che mappa ogni combinazione di mano preflop (es 'AKS', '23O', 'AA') alla sua equity medio (float, range 0-1). Ordinata per equity crescente: '23O'=0.309 è la peggiore, 'AA'=0.854 la migliore. Generata con MC top 100% range.",
+        "dipendenze_esterne": [],
+        "dipendenze_interne": [],
+        "input": "Chiave: stringa mano (es 'AKS', '76O', 'TT')",
+        "output": "Valore: float equity (0.309 - 0.854)",
+        "valutazione": "USABILE",
+        "motivazione": "Asset dati preziosissimo. Lookup O(1) per equity preflop heads-up. Indispensabile per range determination senza calcolare MC ogni volta. Direttamente caricabile come dict Python. Il formato non è standard Treys ma la conversione è banale.",
+        "integrabilita": "ALTA - Asset dati puro, zero dipendenze, direttamente usabile"
+      },
+
+      "preflop_equity-50.json": {
+        "percorso": "poker/decisionmaker/preflop_equity-50.json",
+        "riassunto": "Come preflop_equity.json ma generata con opponent_range=0.5 (top 50% delle mani per l'avversario). 169 entry, equity leggermente diverse perché l'avversario gioca solo top 50% range. Utile per stimare equity against range ristretti.",
+        "dipendenze_esterne": [],
+        "dipendenze_interne": [],
+        "input": "Chiave: stringa mano (es 'AKS', '76O', 'TT')",
+        "output": "Valore: float equity (range leggermente più alto della versione -100)",
+        "valutazione": "USABILE",
+        "motivazione": "Stesso valore della versione -100. Completa la coppia di lookup table per calibrare le assunzioni su range avversari. Utile per pot-ply bias e decisioni più conservative.",
+        "integrabilita": "ALTA - Asset dati puro, zero dipendenze"
+      },
+
+      "current_hand_memory.py": {
+        "percorso": "poker/decisionmaker/current_hand_memory.py",
+        "riassunto": "Due classi: History (memorizza lo stato delle mani precedenti: ultima puntata, game stage, wins/losses, GameID, previous decision) e CurrentHandPreflopState (traccia lo stato preflop corrente: posizioni raiser/caller, nome foglio reverse sheet, ranges del bot). Include logica complessa per derivare il 'reverse sheet name' dalla posizione UTG del giocatore e delle azioni preflop (per stimare il range dell'avversario post-flop). get_rangecards_from_sheetname() estrae le range cards dal foglio Excel.",
+        "dipendenze_esterne": ["numpy", "copy"],
+        "dipendenze_interne": [],
+        "input": "table state (t), history (h), decision (d), strategy (p)",
+        "output": "Aggiornamento stato interno; sheet_name (str), ranges (set di stringhe)",
+        "valutazione": "PARZIALMENTE",
+        "motivazione": "La classe History è semplice e riutilizzabile come game state tracker. La classe CurrentHandPreflopState è complessa e accoppiata al sistema Excel sheets del progetto originale. La logica reverse-sheet per stimare il range avversario è concettualmente preziosa ma l'implementazione dipende da fogli Excel specifici. Utile come reference per tracciare lo stato della mano.",
+        "integrabilita": "MEDIA - History è riutilizzabile, PreflopState è reference-only"
+      },
+
+      "genetic_algorithm.py": {
+        "percorso": "poker/decisionmaker/genetic_algorithm.py",
+        "riassunto": "Algoritmo genetico per ottimizzare i parametri della strategia. Analizza i log delle partite giocate e confronta le performance di call/bet per ogni stage (PreFlop/Flop/Turn/River). Per ogni combinazione stage+decisione, valuta se: (A) le call vincono abbastanza vs perdite, (B) le call perdono più di quanto le fold perdano. In base ai risultati, modifica i parametri MinCallEquity, CallPower, MinBetEquity, BetPower nella strategia. Salva automaticamente la strategia modificata.",
+        "dipendenze_esterne": ["logging"],
+        "dipendenze_interne": ["poker.tools.game_logger.GameLogger", "poker.tools.helper.get_config", "poker.tools.strategy_handler.StrategyHandler"],
+        "input": "Log delle partite (via GameLogger)",
+        "output": "Strategia modificata salvata su DB",
+        "valutazione": "NO",
+        "motivazione": "Interamente accoppiato all'infrastruttura del progetto originale (GameLogger, StrategyHandler, DB remoto). Logica di tuning interessante ma non estraibile senza riscrittura totale. Per PokerBotAgent con LM Studio, l'ottimizzazione avviene diversamente (LLM-driven). Non ha senso integrare questo modulo.",
+        "integrabilita": "NO - Accoppiato a infrastruttura DB + strategy remote, non rilevante per LM Studio approach"
+      },
+
+      "strategy_handler.py": {
+        "percorso": "poker/tools/strategy_handler.py",
+        "riassunto": "Gestisce il caricamento, salvataggio e modifica delle strategie. Carica strategie da un DB remoto via HTTP POST (requests). Contiene check_defaults() con ~50 parametri di default per la strategia (equity thresholds, bluff ranges, power factors, pot adjustments, ecc). read_strategy() scarica dal DB, check_defaults() aggiunge i valori mancanti, modify_strategy() modifica singoli parametri, save_strategy() salva su DB.",
+        "dipendenze_esterne": ["requests", "datetime", "json", "re", "time"],
+        "dipendenze_interne": ["poker.tools.helper.COMPUTER_NAME", "poker.tools.helper.get_config"],
+        "input": "Nome strategia",
+        "output": "selected_strategy (dict con ~100+ parametri)",
+        "valutazione": "USABILE",
+        "motivazione": "Il dizionario di default con tutti i parametri di strategia è preziosissimo come riferimento per i parametri che un bot poker deve considerare. Non il caricamento remoto (da eliminare), ma la lista completa di parametri con i loro nomi e valori di default. Funge da 'specification' completa di cosa serve in una strategia poker. Per PokerBotAgent, questi parametri possono essere mappati a prompt LLM.",
+        "integrabilita": "ALTA come reference - La lista parametri è un inventario completo dei fattori decisionali"
+      },
+
+      "helper.py": {
+        "percorso": "poker/tools/helper.py",
+        "riassunto": "Funzioni di utilità generali: get_config() (Singleton ConfigParser per leggere config.ini), get_dir() (risoluzione path relativi al codebase), init_logger() (setup logging con file rotation), memory_cache() (decorator di memoizzazione), multi_threading() (wrapper per multiprocessing con ThreadPool), flatten() (appiattisce iterabili annidati), exception_hook(), open_payment_link(). Classe Singleton metaclass.",
+        "dipendenze_esterne": ["pandas", "requests", "pickle", "multiprocessing", "socket", "configparser"],
+        "dipendenze_interne": [],
+        "input": "Vari (funzioni utility generiche)",
+        "output": "Vari (config, path, logger, cache, results)",
+        "valutazione": "USABILE",
+        "motivazione": "Funzioni utility generiche che non dipendono dalla logica poker. memory_cache() è un decorator utile, get_dir() è un buon pattern per path resolution, multi_threading() è un wrapper semplice. La maggior parte di queste funzioni può essere copiata o reimplementata in 5 minuti, ma il pattern memory_cache e il setup logger sono già pronti.",
+        "integrabilita": "ALTA - Utility generiche, copy-paste ready"
+      },
+
+      "game_logger.py": {
+        "percorso": "poker/tools/game_logger.py",
+        "riassunto": "Gestisce il logging delle partite su DB remoto (MongoDB via API REST). write_log_file() serializza stato della mano (history, table, decision, strategy) in DataFrame pandas e lo invia. mark_last_game() registra l'esito (Won/Lost/Neutral). Gestisce collusion tracking. Metodi di query per analytics: get_stacked_bar_data(), get_histrogram_data(), get_game_count(), get_strategy_return(), get_worst_games(). Usa threading per scrittura async.",
+        "dipendenze_esterne": ["requests", "pandas", "fastapi.encoders.jsonable_encoder", "json", "datetime", "threading"],
+        "dipendenze_interne": ["poker.tools.helper.COMPUTER_NAME", "poker.tools.helper.get_config", "poker.tools.mongo_manager.MongoManager", "poker.tools.singleton.Singleton"],
+        "input": "Stato mano (h, t, d, p)",
+        "output": "Dati scritti su DB remoto",
+        "valutazione": "NO",
+        "motivazione": "Interamente dipendente da DB remoto (MongoDB + API). Per PokerBotAgent, il logging locale (file JSON o SQLite) è sufficiente. La struttura del dizionario log (what to log) è utile come reference, ma il modulo non è riutilizzabile direttamente.",
+        "integrabilita": "NO - Completamente accoppiato a DB remoto + API REST"
+      },
+
+      "mouse_mover.py": {
+        "percorso": "poker/tools/mouse_mover.py",
+        "riassunto": "Gestisce il movimento del mouse con comportamento anti-detection (movimento a scatti con tremble randomico, velocità variabile, delay random). MouseMover gestisce click e movimento base (supporto VirtualBox e direct control via PyMouse). MouseMoverTableBased aggiunge: mappatura decision→coordinate bottoni (Fold/Call/Check/Bet/BetPlus/etc), move_mouse_away_from_buttons (anti-detection), mouse_action() che mappa una DecisionTypes a coordinate specifiche del tavolo.",
+        "dipendenze_esterne": ["numpy", "time", "random"],
+        "dipendenze_interne": ["poker.pymouse", "poker.tools.helper.get_config", "poker.tools.vbox_manager.VirtualBoxController"],
+        "input": "decision (stringa tipo 'Fold', 'Bet'), topleftcorner (coordinate tavolo)",
+        "output": "Mouse cliccato alla posizione corretta",
+        "valutazione": "USABILE",
+        "motivazione": "La logica di anti-detection mouse (mouse_mover con tremble, velocità variabile, delay random) è direttamente riutilizzabile per PokerBotAgent che usa PyAutoGUI. La mappatura decision→coordinate va adattata alle tabelle del progetto. La classe MouseMoverBase (senza VirtualBox) è estratta facilmente.",
+        "integrabilita": "ALTA - Logica anti-detection mouse universale, adattabile a PyAutoGUI"
+      },
+
+      "screen_operations.py": {
+        "percorso": "poker/tools/screen_operations.py",
+        "riassunto": "Operazioni di vision: OCR con Tesseract (tesserocr), template matching con OpenCV (cv2.matchTemplate), crop screenshots, conversione formati (PIL↔CV2). find_template_on_screen() localizza template con soglia. get_ocr_number() legge valori float da screenshot con preprocessing (resize, binarize, whitelist caratteri). take_screenshot() cattura schermo (direct o VirtualBox). check_cropping() verifica crop. prepareImage() prepara per OCR con binarizzazione a due threshold. Le immagini sono caricate da MongoDB tramite MongoManager.",
+        "dipendenze_esterne": ["cv2 (OpenCV)", "numpy", "PIL (Image, ImageGrab)", "tesserocr (PyTessBaseAPI)"],
+        "dipendenze_interne": ["poker.tools.helper.memory_cache", "poker.tools.helper.get_dir", "poker.tools.constants", "poker.tools.mongo_manager.MongoManager", "poker.tools.vbox_manager.VirtualBoxController"],
+        "input": "Screenshot (PIL Image), template (CV2 image), table_dict (coordinate aree)",
+        "output": "Posizione template (punteggio, punti, valori OCR)",
+        "valutazione": "USABILE",
+        "motivazione": "La logica di OCR e template matching è direttamente rilevante per PokerBotAgent che usa OpenCV/mss. La funzione find_template_on_screen() è universale. La catena OCR (prepareImage → binarize → tesserocr) è un pattern collaudato. La dipendenza da MongoDB per caricare template va sostituita con caricamento locale. La logica ImageGrab da PIL è già usata in PokerBotAgent.",
+        "integrabilita": "ALTA - Pattern OCR/template matching universali, adattabili con minimi cambi"
+      }
+    },
+
+    "riepilogo_per_priorita_integrazione": [
+      {
+        "priorita": 1,
+        "modulo": "preflop_equity.json + preflop_equity-50.json",
+        "valutazione": "USABILE",
+        "perche": "Asset dati puro, zero dipendenze, lookup O(1). Contiene le equity di tutte le 169 mani preflop. Fondamentale per range estimation senza calcolare MC ogni volta. Copia diretta.",
+        "sforzo": "NESSUNO - Copia diretta"
+      },
+      {
+        "priorita": 2,
+        "modulo": "curvefitting.py (versione Curvefitting_scipy)",
+        "valutazione": "USABILE",
+        "perche": "Modulo matematico puro: equity → bet sizing con curva potenza. Nessuna dipendenza dal progetto. Serve solo scipy (già comune). Direttamente riutilizzabile per dimensionare scommesse.",
+        "sforzo": "MINIMO - Cambiare solo nome classe se necessario"
+      },
+      {
+        "priorita": 3,
+        "modulo": "montecarlo_python.py (funzione MonteCarlo)",
+        "valutazione": "USABILE",
+        "perche": "Il core della MC è autonomo. Sostituire calc_score() con Treys.Evaluator() è fattibile in 30 minuti. Il sistema range basato su preflop_equity.json è un bonus enorme. Funziona in pure Python.",
+        "sforzo": "MEDIO - Sostituire calc_score con Treys, pulire run_montecarlo_wrapper"
+      },
+      {
+        "priorita": 4,
+        "modulo": "outs_calculator.py",
+        "valutazione": "USABILE",
+        "perche": "Modulo piccolo, self-contained. Outs calculation (4/8/9/12/15) per flop/turn. L'output è un intero semplice che si usa direttamente nelle equity adjustments.",
+        "sforzo": "MINIMO - Adattare formato carte per Treys se necessario"
+      },
+      {
+        "priorita": 5,
+        "modulo": "mouse_mover.py (logica anti-detection)",
+        "valutazione": "USABILE",
+        "perche": "Pattern anti-detection mouse universale: tremble, velocità variabile, delay random. PokerBotAgent usa già PyAutoGUI. Basta copiare la logica mouse_mover() e adattarla.",
+        "sforzo": "MEDIO - Sostituire PyMouse con PyAutoGUI"
+      },
+      {
+        "priorita": 6,
+        "modulo": "screen_operations.py (funzioni core)",
+        "valutazione": "USABILE",
+        "perche": "Template matching (cv2.matchTemplate), OCR pipeline (resize→binarize→tess), screenshot crop. Pattern già collaudati, direttamente adattabili. Eliminare dipendenza MongoDB per template loading.",
+        "sforzo": "MEDIO - Sostituire MongoManager con caricamento file locale"
+      },
+      {
+        "priorita": 7,
+        "modulo": "strategy_handler.py (solo dizionario parametri)",
+        "valutazione": "USABILE (solo come reference)",
+        "perche": "La lista completa di ~100 parametri di strategia con valori default è un inventario essenziale dei fattori decisionali. Da usare come schema per costruire i prompt LLM o i parametri di configurazione.",
+        "sforzo": "NESSUNO - Solo lettura come reference"
+      },
+      {
+        "priorita": 8,
+        "modulo": "create_preflop_equity_ranking.py",
+        "valutazione": "USABILE",
+        "perche": "Script per rigenerare le tabelle equity. Utile se si vuole calibrare equity per formati/multipli giocatori diversi. Ora non necessario (i JSON esistono già) ma utile per il futuro.",
+        "sforzo": "MINIMO - Adattare per Treys e rigenerare"
+      },
+      {
+        "priorita": 9,
+        "modulo": "current_hand_memory.py (solo classe History)",
+        "valutazione": "PARZIALMENTE",
+        "perche": "La classe History è un buon pattern per tracciare lo stato della mano (lastBet, wins, losses, GameID). Utile come base per il game state management di PokerBotAgent.",
+        "sforzo": "MINIMO - Copiare classe History, ignorare CurrentHandPreflopState"
+      },
+      {
+        "priorita": 10,
+        "modulo": "helper.py (utility functions)",
+        "valutazione": "USABILE",
+        "perche": "memory_cache() decorator, init_logger() setup, multi_threading() wrapper. Utility generiche. Copia diretta se servono.",
+        "sforzo": "NESSUNO - Copy-paste"
+      },
+      {
+        "priorita": 11,
+        "modulo": "straight_draw.py",
+        "valutazione": "USABILE",
+        "perche": "12 righe, funzione pura. Verifica straight draw. Utile se non si usa Treys per questo.",
+        "sforzo": "NESSUNO - Copia diretta"
+      },
+      {
+        "priorita": 12,
+        "modulo": "implied_odds.py",
+        "valutazione": "PARZIALMENTE",
+        "perche": "Formula corretta ma ha bug nell'implementazione (passa self come argomento). Richiede fix di 2 righe.",
+        "sforzo": "BASSO - Fix bug + adattare formato carte"
+      },
+      {
+        "priorita": 13,
+        "modulo": "decisionmaker.py (solo come reference)",
+        "valutazione": "NO (come codice)",
+        "perche": "Troppo accoppiato all'architettura originale. Ma la struttura decisionale (equity thresholds per stage, outs adjustment, preflop adjustment, second round adjustment, bluff ranges) è una reference eccellente per progettare il decision pipeline di PokerBotAgent.",
+        "sforzo": "NON APPLICABILE - Solo lettura come reference architetturale"
+      },
+      {
+        "priorita": 14,
+        "modulo": "current_hand_memory.py (CurrentHandPreflopState)",
+        "valutazione": "NO",
+        "perche": "Accoppiata ai fogli Excel e al sistema reverse sheet del progetto originale. La logica è elegante ma l'implementazione non è riutilizzabile.",
+        "sforzo": "NON APPLICABILE"
+      },
+      {
+        "priorita": 15,
+        "modulo": "genetic_algorithm.py",
+        "valutazione": "NO",
+        "perche": "Interamente dipendente da GameLogger + StrategyHandler + DB remoto. L'ottimizzazione con LM Studio lo rende obsoleto.",
+        "sforzo": "NON APPLICABILE"
+      },
+      {
+        "priorita": 16,
+        "modulo": "game_logger.py",
+        "valutazione": "NO",
+        "perche": "DB remoto (MongoDB) come backend. Per PokerBotAgent, logging locale è sufficiente.",
+        "sforzo": "NON APPLICABILE"
+      },
+      {
+        "priorita": 17,
+        "modulo": "montecarlo_numpy.py / montecarlo_numpy2.py",
+        "valutazione": "PARZIALMENTE",
+        "perche": "Versioni NumPy della MC con potenziale di performance (vettoriale). WIP incomplete, sistemi di indici diversi. Interessanti come reference architetturale per una futura accelerazione MC con NumPy.",
+        "sforzo": "ALTO - Riscrittura significativa richiesta"
+      }
+    ],
+
+    "riepilogo_per_categoria": {
+      "COPIA_DIRETTA": [
+        "preflop_equity.json",
+        "preflop_equity-50.json",
+        "straight_draw.py",
+        "helper.py (memory_cache, init_logger)"
+      ],
+      "INTEGRAZIONE_MINIMA": [
+        "curvefitting.py",
+        "outs_calculator.py",
+        "implied_odds.py (con fix bug)"
+      ],
+      "INTEGRAZIONE_MEDIA": [
+        "montecarlo_python.py (sostituire calc_score con Treys)",
+        "mouse_mover.py (sostituire PyMouse con PyAutoGUI)",
+        "screen_operations.py (sostituire MongoDB con file locale)"
+      ],
+      "SOLO_REFERENCE": [
+        "decisionmaker.py (architettura decisionale)",
+        "strategy_handler.py (lista parametri)",
+        "current_hand_memory.py (classe History)"
+      ],
+      "NON_INTEGRABILI": [
+        "genetic_algorithm.py",
+        "game_logger.py",
+        "montecarlo_numpy.py (WIP)",
+        "montecarlo_numpy2.py (WIP)",
+        "CurrentHandPreflopState (Excel-dependent)"
+      ]
+    },
+
+    "metriche_totali": {
+      "totale_file_analizzati": 19,
+      "usabili_direttamente": 5,
+      "integrabili_con_modifiche": 6,
+      "solo_reference": 3,
+      "non_integrabili": 5,
+      "totale_loc_poker": 3379,
+      "moduli_con_maggiore_potere_riutilizzo": [
+        "preflop_equity.json (169 equity heads-up)",
+        "curvefitting.py (equity→bet sizing)",
+        "montecarlo_python.py (core MC + range estimation)",
+        "outs_calculator.py (outs calculation)",
+        "mouse_mover.py (anti-detection mouse)"
+      ]
+    }
+  }
+}
