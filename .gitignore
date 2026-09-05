@@ -1,0 +1,16 @@
+# Ambiente virtuale (creato automaticamente da avvio.sh)
+.venv/
+
+# Cache Python
+__pycache__/
+*.pyc
+
+# Database runtime (si ricrea automaticamente)
+*.db
+
+# Screenshot di test/debug
+tmp_debug/
+shots/
+
+# File di configurazione locali (non distribuire)
+calibration_report.json
