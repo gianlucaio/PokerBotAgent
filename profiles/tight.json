@@ -1,0 +1,12 @@
+{
+  "name": "tight",
+  "description": "Profilo conservativo - gioca poche mani, strong hands only",
+  "equity_threshold": {
+    "min_call": 0.35,
+    "min_raise": 0.50,
+    "min_fold": 0.10
+  },
+  "aggression_factor": 0.6,
+  "vpip_range": {"min": 0.08, "max": 0.15},
+  "pfr_range": {"min": 0.05, "max": 0.12}
+}
