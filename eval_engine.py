@@ -16,6 +16,11 @@ import requests
 import time
 from typing import List, Dict, Optional, Tuple
 
+# Poker Utils — Moduli di calcolo (estratti da deepmind-pokerbot)
+from poker_utils.preflop import PreflopLookup
+from poker_utils.outs import calculate_outs
+from poker_utils.sizing import BetSizing
+
 
 class EvalEngine:
     """Motore decisionale deterministico basato su Treys."""
@@ -31,6 +36,14 @@ class EvalEngine:
         self.fallback_count = 0
         self.last_success = None
         self.blocked = False
+
+        # Poker Utils — istanze riutilizzabili
+        self.preflop_lookup = PreflopLookup()
+        self.default_sizing = BetSizing(
+            small_blind=0.02, big_blind=0.04,
+            max_value=2.0, min_equity=0.75,
+            max_equity=0.9, power=16
+        )
 
         # --- Step 2bis: GTO Preflop Tables ---
         self.gto_tables = self._load_gto_tables()
@@ -187,6 +200,46 @@ class EvalEngine:
         return equity / pot_odds
 
     # ------------------------------------------------------------------
+    # Poker Utils — Lookup avanzati
+    # ------------------------------------------------------------------
+    def preflop_equity(self, hole_cards: List[str], opponent_range: float = 1.0, num_opponents: int = 1) -> float:
+        """
+        Lookup equity preflop istantaneo da tabella JSON.
+        Se le carte non sono nel range, ritorna 0.5 (neutro).
+        Per multi-way, riduce l'equity proporzionalmente agli avversari.
+        """
+        try:
+            c1 = self.parse_card(hole_cards[0])
+            c2 = self.parse_card(hole_cards[1])
+            eq = self.preflop_lookup.equity(c1, c2, opponent_range)
+            if eq is None:
+                return 0.5
+            # Multi-way adjustment: equity diminuisce con più avversari
+            # Fattore empirico: ~10% di riduzione per avversario extra
+            if num_opponents > 1:
+                eq = eq * (1.0 - 0.1 * (num_opponents - 1))
+                eq = max(eq, 0.05)  # floor minimo
+            return eq
+        except Exception:
+            return 0.5
+
+    def calculate_outs(self, hole_cards: List[str], board_cards: List[str]) -> Dict:
+        """
+        Calcola gli outs per la mano corrente.
+        Ritorna dict con outs, flush_draw, straight_draw, draw_type.
+        """
+        try:
+            hole = [self.parse_card(c) for c in hole_cards]
+            board = [self.parse_card(c) for c in board_cards] if board_cards else []
+            return calculate_outs(hole, board)
+        except Exception:
+            return {"outs": 0, "flush_draw": False, "straight_draw": False, "draw_type": "none"}
+
+    def get_sizing(self, equity: float) -> float:
+        """Calcola bet sizing in base all'equity."""
+        return self.default_sizing.get_bet(equity)
+
+    # ------------------------------------------------------------------
     # Step 2bis: Lookup tabelle GTO push/fold preflop
     # ------------------------------------------------------------------
     def _normalize_hand(self, hole_cards: List[str]) -> str:
@@ -323,15 +376,27 @@ class EvalEngine:
         num_opponents = len([p for p in players if not p.get("is_hero") and p.get("active", True) and p.get("action") != "fold"])
 
         # Calcolo deterministico (SEMPRE attivo in parallelo)
-        equity = self.calculate_equity_mc(hole, board, num_opponents)
+        # Preflop: usa lookup tabella (istantaneo, zero carico MC)
+        if not board:
+            equity = self.preflop_equity(hole, num_opponents=num_opponents)
+        else:
+            equity = self.calculate_equity_mc(hole, board, num_opponents)
+
         pot_size = pot if pot is not None else 0
         pot_odds = self.calculate_pot_odds(call_amount, pot_size)
+
+        # Poker Utils — outs, draw, sizing (arricchiscono il prompt LLM)
+        outs_info = self.calculate_outs(hole, board) if board else {"outs": 0, "draw_type": "none"}
+        sizing = self.get_sizing(equity) if equity > 0 else 0
 
         # Arricchisci state per LLM
         state.update({
             "equity": equity,
             "pot_odds": pot_odds,
             "call_amount": call_amount,
+            "outs": outs_info["outs"],
+            "draw_type": outs_info["draw_type"],
+            "sizing_suggested": sizing,
         })
 
         # Timer di mossa dinamico (da SEE)
@@ -518,7 +583,7 @@ class EvalEngine:
         # System prompt default (Sezione 12 Guida - adattato per modelli piccoli)
         if system_prompt is None:
             system_prompt = """You are a poker decision engine for Texas Hold'em.
-Given the hand state, decide the best action.
+Given the hand state (including equity, outs, pot odds, draw type), decide the best action.
 Output format (ONLY ONE of these):
 - "FOLD" (if you fold)
 - "CHECK" (if you check)
@@ -606,8 +671,10 @@ No other text."""
 - Board: {board}
 - Pot: {pot}
 - Call amount: {call_amount}
-- Equity (Treys Monte Carlo): {equity:.2%}
+- Equity: {equity:.2%}
 - Pot odds: {pot_odds:.2%}
+- Outs: {state.get('outs', 0)} ({state.get('draw_type', 'none')})
+- Sizing suggerito: {state.get('sizing_suggested', 0)}
 - Giocatori attivi: {len([p for p in players if not p.get('is_hero') and p.get('active', True) and p.get('action') != 'fold'])}
 {tournament_context}{opponent_context}
 Restituisci SOLO JSON valido con azione, sizing, motivazione."""
