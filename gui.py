@@ -64,8 +64,8 @@ class PokerGui:
     def __init__(self, root):
         self.root = root
         root.title("PokerBot Agent — Pannello di Controllo")
-        root.geometry("640x780")
-        root.minsize(580, 700)
+        root.geometry("940x780")
+        root.minsize(940, 780)
 
         # Variabili di stato (leggono valori correnti dal DB se presenti)
         self.vars = {}
